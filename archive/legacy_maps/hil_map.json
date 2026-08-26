@@ -1,0 +1,15 @@
+{
+  "_provisional": "PLACEHOLDER ONLY (can_ids 1..12 in canonical joint order, dir=+1). Written to unblock the BENCH bridge smoke test on 2026-07-08 -- this is NOT the real leg/joint wiring or the real direction signs. Overwrite with `python hil_identify.py --wiggle` once the motors are assembled into the robot, and verify every joint in the IDLE mirror check before any torque. Known electrical ID sets per leg are {1,4,8}{2,3,12}{6,7,9}{5,10,11}; this file does NOT respect them.",
+  "FR_abd":   {"can_id": 1,  "dir": 1},
+  "FR_thigh": {"can_id": 2,  "dir": 1},
+  "FR_knee":  {"can_id": 3,  "dir": 1},
+  "FL_abd":   {"can_id": 4,  "dir": 1},
+  "FL_thigh": {"can_id": 5,  "dir": 1},
+  "FL_knee":  {"can_id": 6,  "dir": 1},
+  "RR_abd":   {"can_id": 7,  "dir": 1},
+  "RR_thigh": {"can_id": 8,  "dir": 1},
+  "RR_knee":  {"can_id": 9,  "dir": 1},
+  "RL_abd":   {"can_id": 10, "dir": 1},
+  "RL_thigh": {"can_id": 11, "dir": 1},
+  "RL_knee":  {"can_id": 12, "dir": 1}
+}

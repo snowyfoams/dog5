@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Run logs. This repository ships NO raw experiment data: the chapter docs
+# quote the measured numbers instead. data/README.md says which logs each
+# offline gate wants and where to get them; the gates skip cleanly without them.
+data/**
+!data/README.md
+
+*.npz
+*.zip
+csv/
+out/
+logs/
+
+# MuJoCo
+MUJOCO_LOG.TXT
+
+# Editors / OS
+.DS_Store
+.vscode/
+.idea/
+.claude/
+
+# LaTeX build artifacts (archive/docs_motor_control/)
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk

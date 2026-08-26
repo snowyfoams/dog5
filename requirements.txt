@@ -1,0 +1,16 @@
+# DOG5 runtime dependencies.
+#
+# mujoco is NOT optional: the hardware stack imports it transitively
+# (robot_base/stand_dog5_hw.py -> dog5_description/stand_dog5.py -> mujoco),
+# so every runner needs it even when no simulation is being run.
+#
+# NOT listed here, because it cannot be: fdilink_imu, the FDILink DETA10 vendor
+# SDK. It is not on PyPI and is not vendored in this repository. Install it on
+# the robot host at ~/Documents/IMU_sensor/fdilink_imu (or beside this repo).
+# Without it, everything still imports and every offline gate still runs; only
+# opening a real IMU fails. See docs/ch2_imu_sensor.md.
+
+numpy>=1.24
+mujoco>=3.0
+python-can>=4.0
+pyserial>=3.5

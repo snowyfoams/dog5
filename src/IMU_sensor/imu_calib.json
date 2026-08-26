@@ -1,0 +1,6 @@
+{
+  "roll_offset_deg": 0.11211439665233285,
+  "pitch_offset_deg": 0.05786286469342206,
+  "captured_utc": "2026-07-23T06:53:26Z",
+  "frame_note": "offsets are in the DOG FLU frame (X fwd, Y left, Z up)"
+}
