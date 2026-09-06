@@ -39,7 +39,7 @@ IMPORT_FREE = ["torque_stand/params.py"]
 #: Distributions that are not in this repository and are expected to be
 #: installed.  The first four are required (requirements.txt); the last three
 #: are imported lazily and only on the path that needs them --
-#:   PIL   MuJoCo headless rendering and the README gif
+#:   PIL   MuJoCo headless rendering and the stand-up sim GIF
 #:   usb   libusb enumeration, macOS CAN adapters only
 #:   fdilink_imu   the IMU vendor SDK, which is not on PyPI and not vendored
 #:                 here; without it everything imports and every gate passes,

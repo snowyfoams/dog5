@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dog5-sdk"
+version = "1.0.0"
+description = "DOG5 quadruped SDK: one controller, MuJoCo and the real CAN robot"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Zhan Zhi", email = "ZHANZHI001@e.ntu.edu.sg" }]
+keywords = ["quadruped", "robotics", "mujoco", "can", "motor-control"]
+
+# mujoco is NOT an optional simulation extra: the kinematics cross-check, the
+# statics gate and the simulator all need it, and the hardware stack imports it
+# transitively.  python-can is needed only to talk to the robot, but it is a
+# small pure-python package and leaving it out of the default install is how a
+# classmate discovers on the robot host that it is missing.
+dependencies = [
+    "numpy>=1.24",
+    "mujoco>=3.0",
+    "python-can>=4.0",
+]
+
+[project.optional-dependencies]
+# The FDILink DETA10 AHRS driver needs pyserial.  The vendor SDK itself
+# (fdilink_imu) is NOT on PyPI and is not vendored here -- see the README.
+imu = ["pyserial>=3.5"]
+# Headless MuJoCo rendering, and libusb enumeration for macOS CAN adapters.
+extras = ["Pillow>=10.0", "pyusb>=1.2"]
+
+[project.urls]
+Homepage = "https://github.com/snowyfoams/dog5"
+
+[tool.setuptools.packages.find]
+include = ["dog5_sdk*"]
+
+[tool.setuptools.package-data]
+# The robot IS the model files.  A wheel without the MJCF and its meshes is
+# not a usable install, so they ship inside the package, not beside it.
+dog5_sdk = ["model/*.xml", "model/meshes/*.stl"]

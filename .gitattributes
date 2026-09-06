@@ -17,6 +17,8 @@
 # keeping them there means a clone without LFS is still a complete robot model.
 *.stl  binary
 *.gif  binary
+*.png  binary
+*.jpg  binary
 
 # Line endings.  The control loop runs on a Linux host and the repository is
 # edited on Windows, so this is not cosmetic: `t1_preflight.sh` with CRLF fails

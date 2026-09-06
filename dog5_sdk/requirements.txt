@@ -1,0 +1,31 @@
+# DOG5 SDK runtime dependencies.
+#
+#   pip install -r requirements.txt
+#   pip install -e .            # the same thing, and puts dog5_sdk on the path
+
+# mujoco is NOT optional.  It is the simulator, and it is also the authority
+# the kinematics, the statics and the robot's mass are gated against.
+numpy>=1.24
+mujoco>=3.0
+
+# Only needed to talk to the real robot.  `import dog5_sdk` and Dog5Sim do not
+# touch it -- see dog5_sdk/motor/__init__.py -- so the simulator runs on a
+# laptop with no CAN adapter even if this is missing.
+python-can>=4.0
+
+# ---------------------------------------------------------------------------
+# Optional, imported lazily on the paths that need them.
+#
+#   pyserial   the FDILink DETA10 AHRS driver
+#   Pillow     headless MuJoCo rendering
+#   pyusb      libusb enumeration for macOS USB-CAN adapters.  Not needed on
+#              the robot host, which is Linux SocketCAN.
+#
+# NOT listed, because it cannot be: fdilink_imu, the DETA10 vendor SDK.  It is
+# not on PyPI and is not redistributed here.  Without it everything still
+# imports and every gate still passes; only opening a real IMU fails, and
+# Dog5Hardware falls back to the foot-plane attitude with a warning.
+# ---------------------------------------------------------------------------
+# pyserial>=3.5
+# Pillow>=10.0
+# pyusb>=1.2

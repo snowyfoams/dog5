@@ -19,10 +19,14 @@ pyserial>=3.5
 # Optional, imported lazily and only on the path that needs them. Nothing in
 # the control loop or the gate suite touches either.
 #
-#   Pillow   MuJoCo headless rendering (stand_dog5.py --headless) and the
-#            README gif (dog5_description/make_gif.py)
-#   pyusb    libusb enumeration for macOS CAN adapters (motor/mac_can.py).
-#            Not needed on the robot host, which is SocketCAN.
+#   Pillow      MuJoCo headless rendering (stand_dog5.py --headless) and the
+#               stand-up sim GIF (dog5_description/make_gif.py)
+#   pyusb       libusb enumeration for macOS CAN adapters (motor/mac_can.py).
+#               Not needed on the robot host, which is SocketCAN.
+#   matplotlib  the two README figures that are generated from config.py
+#               (docs/figs/make_figures.py). Documentation only -- nothing in
+#               src/ imports it.
 # ---------------------------------------------------------------------------
 # Pillow>=10.0
 # pyusb>=1.2
+# matplotlib>=3.7
