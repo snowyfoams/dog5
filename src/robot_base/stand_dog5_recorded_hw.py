@@ -34,6 +34,10 @@ Start with a small fraction of the validated path and a 1 N*m torque cap::
 """
 from __future__ import annotations
 
+import os, sys                                                  # noqa: E401
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import dog5_paths  # noqa: E402,F401  -- every src/ dir onto sys.path
+
 import argparse
 import sys
 import time

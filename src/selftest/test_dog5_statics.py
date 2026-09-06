@@ -3,8 +3,9 @@
 
 WHAT IS UNDER TEST
     One claim, from four directions: that `-J^T f + leg_gravity` is the EXACT
-    rigid-body stance torque for a static pose, and that `-J^T f` alone (what
-    dog5_vmc_core.py:224-227 commands today) is not.
+    rigid-body stance torque for a static pose, and that `-J^T f` alone -- what
+    the July stance law commanded, and what any textbook derivation gives you
+    if the legs are assumed massless -- is not.  55% of this robot is limb.
 
     [1] the model literals agree with dog5.xml -- the DOG5_MASS_KG = 5.3 class
         of bug, which is still live in stand_dog5_hw.py:106
@@ -33,15 +34,18 @@ import time
 
 import numpy as np
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_TORQUE = os.path.join(os.path.dirname(_HERE), "torque_primitives")
 _DESC = os.path.join(dog5_paths.SRC, "dog5_description")
 
 from selftest_common import check, report, C_from_rp, SLOT_BUDGET_S  # noqa: E402
 
 import dog5_kinematics as kin                            # noqa: E402
 import dog5_statics as st                                # noqa: E402
-import torque_params as P                                # noqa: E402
+
+# The control layer's OWN copy of the mass, imported here and nowhere else.
+# This file is the single place the two are compared: the statics module must
+# never import a control parameter, and the control parameter must never
+# silently drift from the model.  Somebody has to hold them together.
+import params as ctrl                                    # noqa: E402
 
 # The recorded hardware crouch (stand_dog5_recorded_hw.Q_RECORDED_CROUCH) and
 # a stand pose reached from it.  Real poses matter here: a random pose can put
@@ -82,22 +86,28 @@ def test_mass():
     check("total_mass equals MjModel.body_mass.sum()",
           abs(st.total_mass() - m_model) < 1e-9,
           f"{st.total_mass():.8f} vs {m_model:.8f} kg")
-    check("torque_params.DOG5_MASS_KG agrees with the model",
-          abs(P.DOG5_MASS_KG - m_model) < 1e-3,
-          f"{P.DOG5_MASS_KG} vs {m_model:.4f} kg")
+    check("dog5_statics.DOG5_MASS_KG agrees with the model",
+          abs(st.DOG5_MASS_KG - m_model) < 1e-3,
+          f"{st.DOG5_MASS_KG} vs {m_model:.4f} kg")
+    # the model layer and the control layer each declare the mass, and this is
+    # the ONE gate that holds them together.  torque_stand/params.py has no
+    # imports by design, so it cannot read the model; this file can read both.
+    check("...and so does torque_stand/params.py, which cannot read the model",
+          abs(ctrl.MASS_KG - m_model) < 1e-3,
+          f"params.MASS_KG = {ctrl.MASS_KG} vs {m_model:.4f} kg")
     # the number this whole file exists to keep out of the torque path
     import stand_dog5_hw as base                          # noqa: PLC0415
     check("stand_dog5_hw.DOG5_MASS_KG is NOT used here (it is 8.9% low)",
           abs(base.DOG5_MASS_KG - m_model) > 0.3
-          and abs(P.DOG5_MASS_KG - base.DOG5_MASS_KG) > 0.3,
-          f"base has {base.DOG5_MASS_KG}, we use {P.DOG5_MASS_KG}")
+          and abs(st.DOG5_MASS_KG - base.DOG5_MASS_KG) > 0.3,
+          f"base has {base.DOG5_MASS_KG}, we use {st.DOG5_MASS_KG}")
     check("legs are the majority of the mass (why leg gravity matters)",
           0.5 < 4 * st.leg_mass() / st.total_mass() < 0.6,
           f"{100 * 4 * st.leg_mass() / st.total_mass():.1f}%")
     check("WEIGHT_N and PER_FOOT_GRF_N are consistent with the mass",
-          abs(P.WEIGHT_N - P.DOG5_MASS_KG * P.GRAVITY_M_S2) < 0.02
-          and abs(P.PER_FOOT_GRF_N - P.WEIGHT_N / 4) < 0.02,
-          f"{P.WEIGHT_N:.2f} N, {P.PER_FOOT_GRF_N:.2f} N/foot")
+          abs(st.WEIGHT_N - st.DOG5_MASS_KG * st.GRAVITY_M_S2) < 0.02
+          and abs(st.PER_FOOT_GRF_N - st.WEIGHT_N / 4) < 0.02,
+          f"{st.WEIGHT_N:.2f} N, {st.PER_FOOT_GRF_N:.2f} N/foot")
 
 
 def test_trunk_inertial_matches_xml():
@@ -194,7 +204,7 @@ def test_matches_mujoco_with_feet_up():
 def test_leg_gravity_is_load_bearing():
     """THE anti-regression gate.  If stance_torque is ever 'simplified' back
     to -J^T f, this goes red with the number that motivated the change."""
-    share = st.total_mass() * P.GRAVITY_M_S2 / 4.0
+    share = st.total_mass() * st.GRAVITY_M_S2 / 4.0
     f = np.array([0.0, 0.0, share])
     for name, q_all in (("recorded crouch", Q_CROUCH),):
         tau_model, tau_ours = st.verify_against_model(q_all)
@@ -241,7 +251,7 @@ def test_matches_mujoco_under_tilt():
             _, anchors, axes, com_pts = st.leg_frames(leg, Q_CROUCH[i])
             ref = np.zeros(3)
             for link, inertial in enumerate(kin.LINK_INERTIALS[leg]):
-                w = inertial.mass * P.GRAVITY_M_S2 * g_down
+                w = inertial.mass * st.GRAVITY_M_S2 * g_down
                 for j in range(link + 1):
                     ref[j] -= float(np.dot(
                         axes[j], np.cross(com_pts[link] - anchors[j], w)))
@@ -289,7 +299,7 @@ def test_com_body():
 
 def test_cost():
     q = Q_CROUCH
-    f = np.array([0.0, 0.0, P.PER_FOOT_GRF_N])
+    f = np.array([0.0, 0.0, st.PER_FOOT_GRF_N])
     g_down = st.gravity_down_body(C_from_rp(0.02, -0.01))
 
     def sweep():
@@ -303,13 +313,16 @@ def test_cost():
     for _ in range(n):
         sweep()
     dt = (time.perf_counter() - t0) / n
-    budget = 1.0 / P.CONTROL_UPDATE_HZ
-    check("4-leg corrected stance law fits the 100 Hz worker",
+    # The model block runs every MODEL_EVERY-th 250 Hz sweep -- 83.3 Hz, 12 ms
+    # -- and this law is one term inside it.  Budget it against that, not
+    # against the sweep: what must fit in a sweep is the impedance, not this.
+    budget = ctrl.MODEL_EVERY / ctrl.CONTROL_HZ
+    check("the 4-leg corrected stance law fits the 83.3 Hz model block",
           dt < 0.25 * budget,
-          f"{dt*1e6:.0f} us per sweep (worker budget {budget*1e3:.0f} ms)")
+          f"{dt*1e6:.0f} us per call (model block {budget*1e3:.0f} ms)")
     check("...and is reported against the CAN slot for reference",
           True, f"{dt*1e6:.0f} us vs the {SLOT_BUDGET_S*1e6:.0f} us slot "
-                f"budget -- this is WHY it runs off-thread")
+                f"budget -- this is WHY it is sub-sampled, not run per sweep")
 
 
 def self_test():

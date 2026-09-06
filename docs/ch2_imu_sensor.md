@@ -3,8 +3,8 @@
 **Status: PASSED.** ~200 Hz, zero CRC errors, 0.01–0.03° of jitter with all
 twelve motors loaded.
 
-Source: [`src/IMU_sensor/`](../src/IMU_sensor) · downstream bridge in
-[`src/state_estimator/imu_ekf_feed.py`](../src/state_estimator/imu_ekf_feed.py)
+Source: [`src/IMU_sensor/`](../src/IMU_sensor) · consumed by
+[`torque_stand/feedback_estimator.py`](../src/torque_stand/feedback_estimator.py)
 
 ---
 
@@ -18,9 +18,11 @@ Two packet types matter:
 
 - **`0x41`** — attitude already fused on the sensor. This is what the standing
   and trotting controllers use.
-- **`0x40`** — raw specific force and angular rate. This is what the EKF
-  (chapter 5) wants, because it does its own fusion and must not be fed
-  someone else's posterior.
+- **`0x40`** — raw specific force and angular rate. **Nothing in this
+  repository reads it.** It is what a filter doing its own fusion would want,
+  because such a filter must not be fed someone else's posterior — and the
+  shipped loop has no such filter. See [chapter 4
+  §5](ch4_quasi_dynamic_trot.md#5-feedback-without-a-motion-capture-rig).
 
 ## 2. Frames: NED → FLU
 
@@ -89,9 +91,9 @@ logging only**.
 
 Yaw *rate*, from the gyro, is inertial and is fine — it drifts slowly when
 integrated but is trustworthy over a step or a gait cycle. This is why every
-later chapter closes yaw on **rate**, never on absolute heading, and why the
-EKF in chapter 5 treats yaw as unobservable by design rather than as something
-to be estimated better.
+later chapter closes yaw on **rate**, never on absolute heading. The heading
+the AHRS reports is latched once at start-up and every later reading is taken
+relative to it, so the absolute number never has to mean anything.
 
 ## 5. Noise, measured
 
@@ -99,8 +101,8 @@ to be estimated better.
 statistics and recommends a low-pass cutoff. The Phase-0 result, with motors
 powered and loaded: **~200 Hz sustained, 0 CRC errors, 0.01–0.03° jitter.**
 
-That number is the reason the leveling loops in chapter 5 can use a 0.2°
-deadband and still be doing something real.
+That number is the reason an attitude loop can use a 0.2° deadband and still
+be doing something real: the jitter is an order of magnitude below it.
 
 ## 6. Where the IMU physically is
 
@@ -113,8 +115,9 @@ the stand parameters. But `dog5.xml` declares:
 
 at the trunk origin. **That is correct in simulation and wrong on hardware.**
 The discrepancy is compensated in the consumers rather than fixed in the model,
-which is a real wart — see chapter 3's limitations. It is also one of the three
-different "heights" that chapter 5 has to keep separate.
+which is a real wart — see chapter 3's limitations. It is also one of the
+three different "heights" that [chapter 4](ch4_quasi_dynamic_trot.md) has to
+keep separate, and getting them confused was the 2026-08-17 frame bug.
 
 ## 7. The vendor SDK, and the `$HOME` trap
 
@@ -134,15 +137,14 @@ raises, and it raises with an explanation. This matters because eleven of the
 seventeen call sites in this repository want nothing from the module but
 `DEFAULT_PORT`, and the offline gate suite fakes the sensor outright
 (`selftest_common.FakeAhrs` / `FakeFeed`). Before the guard, one missing vendor
-package took all 504 offline gates with it.
+package took every offline gate with it.
 
 ## 8. Downstream
 
 | consumer | what it takes |
 |---|---|
-| `state_estimator/imu_ekf_feed.py` | raw `0x40`, NED→FLU, buffered so a slow control loop can batch samples into the EKF |
-| `torque_primitives/body_state_ahrs.py` | fused `0x41` attitude — the AHRS-only alternative to the EKF |
-| `dog5_trot_quasi_static_model/att_web.py` | a browser dashboard of roll/pitch/yaw |
+| `torque_stand/feedback_estimator.py` | fused `0x41` attitude — roll and pitch, with the mount-tilt setpoint subtracted. This is the only attitude the control loop sees |
+| `dog5_trot_quasi_static_model/att_web.py` | a browser dashboard of roll/pitch/yaw, sampled independently of the loop so the two traces can be compared |
 
 ## 9. Try it
 

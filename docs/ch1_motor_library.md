@@ -92,9 +92,11 @@ Older comments elsewhere in this project state that the per-joint rate is
 ~20.8 Hz — that is 250/12, and it is **wrong**. The error is a factor of
 twelve. It mattered: the torque-control track was abandoned in July 2026 on the
 argument that ~20 Hz could not stabilise a leg, and was restarted only after
-the rate was corrected (commit `c97f1f1`).
-`archive/vmc/stand_hier_hw.py` still carries the wrong verdict in its
-docstring, preserved deliberately.
+the rate was corrected (commit `c97f1f1`). At the true 4 ms sweep the
+sampled-damper bound `kd < 2J/dt` is 4.4 N·m·s/rad on the knee rather than
+0.37 — which is the whole reason a joint-space PD is possible at all here.
+[`torque_stand/params.py`](../src/torque_stand/params.py) opens with that
+derivation so nobody re-derives 20.8 Hz.
 
 ## 4. The bus budget
 

@@ -10,14 +10,26 @@ import sys
 
 import numpy as np
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
 _DESC = os.path.join(dog5_paths.SRC, "dog5_description")
 
 import dog5_kinematics as kin                              # noqa: E402
-from torque_params import DOG5_MASS_KG, GRAVITY_M_S2       # noqa: E402
 
 LEGS = kin.LEGS
 N_LEGS = len(LEGS)
+
+# ---------------------------------------------------------------------------
+# Mass and weight.  These live HERE, beside the model they describe, and not
+# in a control-layer parameter file: they are facts about dog5.xml, gated
+# against it below and again in verify_against_model().  torque_stand/params.py
+# carries its own MASS_KG for the gravity feedforward; the two are checked
+# against each other by selftest/test_dog5_statics.py, which is the only place
+# the model layer and the control layer are allowed to meet.
+# ---------------------------------------------------------------------------
+DOG5_MASS_KG = 5.8151        # trunk 2.61890103 + 4 x (0.39152916 + 0.36932519
+                             # + 0.0381955) -- a controlled copy of dog5.xml
+GRAVITY_M_S2 = 9.81
+WEIGHT_N = DOG5_MASS_KG * GRAVITY_M_S2      # 57.046 N
+PER_FOOT_GRF_N = WEIGHT_N / 4.0             # 14.26 N -- an even four-way split
 
 # Controlled copy of the dog5.xml trunk inertial (line 37), same pattern
 # dog5_kinematics uses for LEG_GEOMETRY and LINK_INERTIALS.  Gated against the
@@ -30,7 +42,7 @@ TRUNK_COM_BODY = np.array([0.00071848, 0.00000646, 0.00838375])
 # returns the torque the MOTORS MUST APPLY to hold the links up, which is the
 # negative of the gravitational generalised force.  That matches
 # dog5_kinematics.leg_gravity_torque and matches how the swing branch of
-# dog5_vmc_core uses it (added, not subtracted).
+# force_totorque.stance_torque uses it (added, not subtracted).
 _G_DOWN_LEVEL = np.array([0.0, 0.0, -1.0])
 
 _LEG_MASS_KG = float(sum(li.mass for li in kin.LINK_INERTIALS["FL"]))
@@ -45,12 +57,12 @@ _LINK_WEIGHTS_N = {leg: np.array([li.mass * GRAVITY_M_S2 for li in links])
 _CARRIES = np.triu(np.ones((3, 3)))
 
 # Import-time sanity.  This is the cheap half of the check that would have
-# caught both the DOG5_MASS_KG = 0 incident (CONTROL_ROADMAP.md Phase 4) and
-# the 5.3 that is still live in stand_dog5_hw.py:106.  The expensive half --
-# against the MJCF itself -- is verify_against_model(), run by the gates.
+# caught both the DOG5_MASS_KG = 0 incident and the 5.3 that is still live in
+# stand_dog5_hw.py:106.  The expensive half -- against the MJCF itself -- is
+# verify_against_model(), run by the gates.
 if not abs(_TOTAL_MASS_KG - DOG5_MASS_KG) < 1e-3:
     raise RuntimeError(
-        f"torque_params.DOG5_MASS_KG = {DOG5_MASS_KG} disagrees with the link "
+        f"dog5_statics.DOG5_MASS_KG = {DOG5_MASS_KG} disagrees with the link "
         f"inertials ({_TOTAL_MASS_KG:.6f} kg = trunk {TRUNK_MASS_KG} + 4 x "
         f"{_LEG_MASS_KG:.6f}).  Do NOT paper over this: the mass is the "
         f"gravity feedforward in body_wrench, and stand_dog5_hw.py:106 "
@@ -133,8 +145,8 @@ def leg_gravity_torque_tilted(leg: str, q, g_down_body=None,
     machine precision, so the two can never drift apart.
 
     To get it from an estimator: `C` maps INERTIAL -> BODY and the inertial
-    up-axis is +z, so up_body = C @ [0,0,1] (this is precisely
-    dog5_vmc_core.attitude_error_rp's `g_b`) and g_down_body = -up_body.
+    up-axis is +z, so up_body = C @ [0,0,1] and g_down_body = -up_body.
+    `feedback_estimator.body_state` builds exactly that C from the AHRS.
 
     Why it matters that this takes a direction at all: the stock function
     assumes the trunk is horizontal.  A leveling stand holds a few degrees of
@@ -173,7 +185,7 @@ def com_body(q_all, frames_all=None) -> np.ndarray:
     this is worth about 0.02 Nm.  It moves a lot -- +24.6 mm at the recorded
     crouch to -19.3 mm at a 0.19 m stand, a 44 mm swing that changes sign --
     but almost all of that is in z, and z very nearly cancels: in
-    dog5_vmc_core.grasp_map the lever enters as skew(r_w), and for a
+    force_totorque's grasp map the lever enters as skew(r_w), and for a
     world-vertical force  r x (0,0,fz) = (ry*fz, -rx*fz, 0), so r_z drops out
     identically.  It reaches the answer only through TANGENTIAL forces (the
     kd_x/kd_y damping and the friction clamp).  In x/y the offset is 0.3 mm
@@ -202,9 +214,9 @@ def stance_torque(leg: str, q, f_body, g_down_body=None, frames=None):
     """Joint torque for ONE stance leg carrying `f_body`.
 
     `f_body` is the ground reaction ON THE BODY (up, +z), in body coordinates
-    -- exactly what `dog5_vmc_core.distribute_wrench` returns.  The foot
-    pushes DOWN on the ground with -f_body, hence the sign on the J^T term;
-    this matches dog5_vmc_core.py:227 and is not the part that was wrong.
+    -- exactly what `force_totorque.distribute` returns.  The foot pushes
+    DOWN on the ground with -f_body, hence the sign on the J^T term; that sign
+    was never the part that was wrong.  The missing leg-gravity term was.
 
     Returns (tau(3,), J(3,3)) -- J comes back because the caller needs it for
     the singularity guard and for foot_load_map on the way out.

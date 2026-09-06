@@ -16,9 +16,10 @@ WHAT STREAMS, AND WHERE EACH NUMBER COMES FROM
 
 REUSE, NOT A FORK
     Telemetry, the HTTP handler, the dual-stack server and the URL printer
-    are state_estimator/ekf_web's, imported -- the pattern the gate-C8 stand
-    and the D1 walk streamed on.  Only the sampler (AHRS instead of EKF
-    mailbox) and the page's field map / cards are this file's own.
+    are `tools/web_telemetry.py`'s, imported.  Nothing in that module knows
+    about DOG5.  Only the sampler and the page's field map / cards are this
+    file's own -- which is the split that decides what belongs where: if it
+    would still make sense for a different robot, it is not in this file.
 
 ISOLATION (the control loop is real-time, this is not)
     * the sampler READS imu.sample() -- a rebound-dataclass peek, no lock,
@@ -43,12 +44,9 @@ import sys
 import threading
 import time
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_AUG = os.path.dirname(_HERE)
-_SE = os.path.join(os.path.dirname(_AUG), "state_estimator")
-
-from ekf_web import (Telemetry, _DualStackServer, _make_handler,  # noqa: E402
-                     _urls, DEFAULT_PORT, DEFAULT_SAMPLE_HZ)
+from web_telemetry import (Telemetry, DualStackServer,      # noqa: E402
+                           make_handler, urls,
+                           DEFAULT_PORT, DEFAULT_SAMPLE_HZ)
 
 # sample tuple layout, shared with the page's JS (keep in sync)
 # The per-joint torque triple (tau_des / tau_cmd / tau_meas) deliberately
@@ -121,7 +119,7 @@ def start(shared, port=DEFAULT_PORT, hz=DEFAULT_SAMPLE_HZ):
     a run without the page is still a run (it is)."""
     tel = Telemetry()
     stop_evt = threading.Event()
-    httpd = _DualStackServer(("::", port), _make_handler(tel, page=PAGE))
+    httpd = DualStackServer(("::", port), make_handler(tel, page=PAGE))
     threading.Thread(target=httpd.serve_forever, kwargs={"poll_interval": 0.2},
                      daemon=True).start()
     threading.Thread(target=_sampler_loop, args=(shared, tel, stop_evt, hz),
@@ -134,7 +132,7 @@ def start(shared, port=DEFAULT_PORT, hz=DEFAULT_SAMPLE_HZ):
             httpd.server_close()
         except Exception:
             pass
-    return stop, _urls(port)
+    return stop, urls(port)
 
 
 PAGE = r"""<!doctype html>

@@ -10,7 +10,7 @@ Layout contract
 Every source directory is EXACTLY one level below ``src/``::
 
     src/motor/            src/dog5_description/   src/robot_base/
-    src/IMU_sensor/       src/state_estimator/    src/torque_stand/   ...
+    src/IMU_sensor/       src/calibration/        src/torque_stand/   ...
 
 so a bare ``import motorbus`` / ``import dog5_kinematics`` resolves from any
 script in the tree, and the three-line header that calls this module is
@@ -18,17 +18,27 @@ byte-identical in every file that needs it.
 
 Packages are deliberately NOT added
 -----------------------------------
-``dog5_trot_quasi_static_model/`` and ``srb_mpc_hw/`` stay importable only as
-packages.  Both contain a ``config.py``, and ``motor/motorbus.py`` imports the
-motor unit-gain table.  If those directories went on ``sys.path`` the wrong
-``config`` would win and the CAN layer would die with a bare
-``module 'config' has no attribute 'encoder_gain'``.  Keeping them off the path
-makes that collision structurally impossible instead of merely commented
-against.  ``src/selftest/test_shadowing.py`` is the standing regression gate.
+``dog5_trot_quasi_static_model/`` stays importable only as a package.  It
+contains a ``config.py``, and ``motor/motorbus.py`` imports the motor unit-gain
+table.  If that directory went on ``sys.path`` the wrong ``config`` would win
+and the CAN layer would die far away with a bare
+``module 'config' has no attribute 'encoder_gain'``.  Keeping it off the path
+makes the collision structurally impossible instead of merely commented
+against.  ``src/selftest/test_layout.py`` is the standing regression gate.
 
-The empty/``.``/script-directory entries are also stripped, for the same reason:
-running ``python src/dog5_trot_quasi_static_model/trot_hw.py`` would otherwise
-put that package directory itself at the front of ``sys.path``.
+Strip first, then add
+---------------------
+The empty / ``.`` / current-directory entries are stripped for the same reason:
+running ``python trot_hw.py`` from inside the package directory would otherwise
+put that directory at the front of ``sys.path``.
+
+The order matters, and it used to be the other way round.  Stripping the
+current directory AFTER adding the source directories also removed the source
+directory you happened to be standing in, so ``cd src/selftest && python
+test_layout.py`` died on ``No module named selftest_common`` while the same
+script run from the repository root was fine.  Removals happen first now, and
+every non-package directory is added back after -- so where you invoke a script
+from cannot change what it can import.
 """
 
 from __future__ import annotations
@@ -40,7 +50,7 @@ SRC = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(SRC)
 
 #: Directories that must be reached as packages, never as path entries.
-PACKAGES = frozenset({"dog5_trot_quasi_static_model", "srb_mpc_hw"})
+PACKAGES = frozenset({"dog5_trot_quasi_static_model"})
 
 _INSTALLED = False
 
@@ -52,6 +62,20 @@ def install() -> list:
     of directories that are on the path as a result.
     """
     global _INSTALLED
+
+    # 1. STRIP.  A script's own directory (or "" / ".") at the front of
+    #    sys.path is how the config.py collision used to happen.
+    for dup in ("", ".", os.getcwd()):
+        while dup in sys.path:
+            sys.path.remove(dup)
+    for pkg in PACKAGES:
+        pkg_dir = os.path.join(SRC, pkg)
+        while pkg_dir in sys.path:
+            sys.path.remove(pkg_dir)
+
+    # 2. ADD, after the strip -- see the module docstring.  A directory removed
+    #    above only because it happened to be the working directory comes back
+    #    here; a package directory does not, because it is skipped.
     added = []
     for name in sorted(os.listdir(SRC)):
         path = os.path.join(SRC, name)
@@ -63,20 +87,10 @@ def install() -> list:
             sys.path.insert(0, path)
         added.append(path)
 
-    # src/ itself, so `import dog5_trot_quasi_static_model` and `import srb_mpc_hw`
-    # resolve as packages.
+    # src/ itself, so `import dog5_trot_quasi_static_model` resolves as a
+    # package.
     if SRC not in sys.path:
         sys.path.insert(0, SRC)
-
-    # A script's own directory (or "" / ".") at the front of sys.path is how the
-    # config.py collision used to happen.  Drop those entries.
-    for dup in ("", ".", os.getcwd()):
-        while dup in sys.path:
-            sys.path.remove(dup)
-    for pkg in PACKAGES:
-        pkg_dir = os.path.join(SRC, pkg)
-        while pkg_dir in sys.path:
-            sys.path.remove(pkg_dir)
 
     _INSTALLED = True
     return added

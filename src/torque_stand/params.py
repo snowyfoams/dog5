@@ -292,7 +292,7 @@ FOOT_RADIUS_M = 0.020        # foot site is the CENTRE of the contact sphere
 # the HIP-AXIS plane.  Nothing physical is at that plane and a tape cannot
 # reach it.  The IMU board sits on the trunk BOTTOM, 38 mm lower (hip axis
 # 8.5 in, trunk bottom 7.0 in; tape-validated 2026-07-31, and the same
-# constant imu_closedloop_stand/stand_params.py carries).
+# constant the position-mode stand track carried).
 #
 # Hardware 2026-08-17: this runner reported z = 191 mm while a ruler on the
 # trunk bottom read ~160.  191 - 38 = 153, so the "31 mm error" was almost
@@ -362,9 +362,9 @@ SETPOINT_PITCH_DEG = 0.12
 #                   with a torque that is entirely fictitious
 #
 # stand_dog5_hw already warns that this field produces nuisance readings (it
-# records 5.9 rad/s), and the OLD Cartesian compliance controller -- the one
-# that stands without shaking -- never reads it at all.  This track inherited
-# the field from body_state_ahrs.py and inherited the shake with it.
+# records 5.9 rad/s), and the position-mode Cartesian compliance controller --
+# the one that stands without shaking -- never reads it at all.  This track
+# inherited the field from the July torque stack and inherited the shake.
 #
 # Encoder differencing is noisier in the quantisation sense (0.01 deg over a
 # 4 ms sweep is 0.044 rad/s raw, 0.026 filtered) but it CANNOT glitch: the

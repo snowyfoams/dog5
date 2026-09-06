@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """calibrate12.py -- observe / verify / hardware set-zero for ALL 12 motors (CAN id 1..12).
 
-The 12-motor sibling of archive/cartesian_compliance_demo/calibrate.py. Built on the clean
-motorbus.py library (MotorBus round-robin), which is the correct primitive for a
-shared multi-motor bus -- the arm's calibrate.py uses the blocking LKMotor, which
-mixes replies across ids and does not scale to 12.
+Built on the clean motorbus.py library (MotorBus round-robin), which is the
+correct primitive for a shared multi-motor bus.  Its single-motor predecessor
+used the blocking LKMotor, which mixes replies across ids and does not scale
+to 12.
 
 Every mode commands all 12 motors ZERO torque throughout (fully back-drivable).
 NOTHING is ever commanded to move; you pose the rig by hand. Start the tool FIRST,

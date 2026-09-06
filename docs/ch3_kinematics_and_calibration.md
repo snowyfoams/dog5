@@ -39,18 +39,20 @@ Unpacked:
   is converted into.
 - **Origin** is the trunk motor-plane centre, not the CoM and not the
   geometric centre. The CoM sits **14.7 mm** away, which is a real 0.84 N·m
-  pitch bias that chapter 6 has to feed forward.
+  pitch bias that chapter 4 has to feed forward.
 - **Zero pose is the flat calibration pose** — all twelve joints at 0 puts the
   legs straight out sideways. This is not a pose the robot can stand in, and
   it is *singular*: at flat, the leg Jacobian is rank-1 and a Cartesian force
   command has no vertical authority at all. That single fact is why every
-  stand in chapters 4–6 is staged through a crouch rather than pushed straight
-  up from zero.
+  stand in this repository is staged through a crouch rather than pushed
+  straight up from zero.
 - Masses come from a **uniform PLA density of 1.0 g/cm³**. Nothing was weighed.
 
 ## 3. Quaternion and rotation conventions
 
-Fixed project-wide, and the EKF in chapter 5 is written against them:
+Fixed project-wide. Nothing in the shipped loop integrates a rotation — the
+attitude is the AHRS's own fused output and the leg solver never leaves the
+trunk frame — so the quaternion row below is convention, not code in use:
 
 | item | convention |
 |---|---|
@@ -88,7 +90,7 @@ diverges slowly. It is fixed here and stated in one place.
   `contype="2" conaffinity="1"`. Convex hulls of the real leg meshes produced
   phantom self-collisions.
 - Trunk mass 2.6189 kg; whole-robot mass **5.8151 kg**, of which the legs are
-  **3.196 kg — 55%**. Chapter 6 depends on that ratio.
+  **3.196 kg — 55%**. Chapter 4 depends on that ratio.
 - `<site name="imu" pos="0 0 0"/>` sits at the trunk origin, which is right in
   simulation and **38 mm too high on hardware** (chapter 2 §6).
 
@@ -177,13 +179,14 @@ For several weeks in mid-2026 **four** joint maps were live at once:
 | file | claim | verdict |
 |---|---|---|
 | `dog5_hardware_map.py` | the table above | **authoritative** |
-| `archive/legacy_docs/coordinates.md` | FL 10/11/12, FR 7/8/9, RL 1/2/3, RR 4/5/6 | **left and right swapped** — superseded worksheet, direction column never filled in |
-| `archive/legacy_runners/hold_dog5_recorded_pose.py` | RL 1/2/3, RR 4/5/6, FR 7/8/9, FL 10/11/12 | a third arrangement |
-| `archive/legacy_maps/hil_map.json` | — | self-labelled `"PLACEHOLDER ONLY … NOT the real leg/joint wiring"`; the EKF bring-up plan says **"Do NOT trust hil_map.json"** |
+| a superseded `coordinates.md` worksheet | FL 10/11/12, FR 7/8/9, RL 1/2/3, RR 4/5/6 | **left and right swapped**; the direction column was never filled in |
+| a legacy recorded-pose runner | RL 1/2/3, RR 4/5/6, FR 7/8/9, FL 10/11/12 | a third arrangement |
+| a `hil_map.json` | — | self-labelled `"PLACEHOLDER ONLY … NOT the real leg/joint wiring"` |
 
-Only `dog5_hardware_map.py` validates itself at import, and only it is
-imported by running code. The others are archived so the confusion is on the
-record rather than lying in wait.
+Only `dog5_hardware_map.py` validates itself at import, and it is the only one
+that survives here — the other three are in the private history. The reason to
+write this down at all is that **none of the four announced itself as wrong**;
+each was found by a robot moving the wrong leg.
 
 ### And two encoder conventions
 
@@ -203,10 +206,11 @@ tell you whether a foot is touching the ground, whether it is slipping, or
 where gravity is. Lift the whole robot without moving a joint and `h` does not
 change.
 
-This is the single most important sentence in the chapter, and chapters 4 and
-5 are largely about buying back the information it says the encoders do not
-have — chapter 4 by assuming flat ground and four contacts, chapter 5 by
-adding the IMU.
+This is the single most important sentence in the chapter. Chapter 4 buys
+back part of what it says the encoders cannot give you — attitude from the
+IMU, and trunk velocity from the legs — and is explicit about the part it does
+not: **contact is asserted by a clock, never measured**, and there are no force
+sensors on this robot.
 
 ## 9. Calibration on the robot
 
@@ -215,7 +219,7 @@ adding the IMU.
 | `calibration/calibrate12.py` | `--observe` (live encoder table, all motors back-drivable), `--verify` (check the zero pose), `--set-zero` (write `0x19`; takes effect only after a power cycle) |
 | `calibration/calibrate_leg.py` | the same for one leg's three IDs |
 | `calibration/setzero_one.py` | one motor, including clearing a `0x80` latch over CAN first |
-| `calibration/dog5_pose_monitor.py` | zero-torque live pose view; `C` captures a hand-arranged pose to JSON, `H` holds it under low-torque joint PD. This is how the recorded crouch that chapters 4–6 all start from was produced |
+| `calibration/dog5_pose_monitor.py` | zero-torque live pose view; `C` captures a hand-arranged pose to JSON, `H` holds it under low-torque joint PD. This is how the recorded crouch that every runner starts from was produced |
 
 Frequent use of `0x19` shortens driver life — it writes flash.
 
@@ -224,7 +228,7 @@ Frequent use of `0x19` shortens driver life — it writes flash.
 - **No URDF, and `fusion2mjcf` is not in the repository**, so the model cannot
   be regenerated here and there is no ROS/Pinocchio interoperability.
 - **Inertias are assumed, not weighed** — uniform PLA at 1.0 g/cm³ for every
-  printed part. Every model-based result in chapter 6 inherits that error, and
+  printed part. Every model-based result in chapter 4 inherits that error, and
   nobody has bounded it.
 - **The IMU site in `dog5.xml` is wrong on hardware by 38 mm** and is corrected
   in the consumers instead of in the model.
@@ -241,6 +245,8 @@ Frequent use of `0x19` shortens driver life — it writes flash.
   `if __name__ == "__main__"` guard. Importing the first opens a blocking
   viewer window; importing the second renders and *overwrites* the GIF in
   `docs/images/`. Nothing imports them, but any tooling that sweeps the tree
-  importing modules must skip both.
+  importing modules must skip both. `selftest/test_layout.py` knows they are
+  scripts rather than dead files because they have top-level statements, not
+  because of a guard.
 - `imu_frame_test.py` imports `termios` and so is POSIX-only; it will not run
   on Windows even with the vendor SDK present.

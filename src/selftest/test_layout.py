@@ -2,10 +2,17 @@
 """Gates on the repository layout itself, not on any control law.
 
 These exist because the reorganisation that produced this repository merged two
-nested git repositories into one tree, and the failure modes it had to design
-around are silent ones: a shadowed module that dies three imports later with an
-unrelated AttributeError, a parameter file that quietly stops being safe to read
-from a notebook, a path that only resolves on the machine it was written on.
+nested git repositories into one tree and then cut it down to the code that has
+actually run on the robot, and the failure modes of both are silent ones: a
+shadowed module that dies three imports later with an unrelated AttributeError,
+a parameter file that quietly stops being safe to read from a notebook, a path
+that only resolves on the machine it was written on, an import left pointing at
+a file that is no longer here.
+
+THE ONE TO READ FIRST is `test_every_import_resolves`.  It is the gate that
+says this repository can be cloned onto another machine and still work: every
+repo-local import in every shipped file names a module that is present.  Run it
+after any move, rename or deletion.
 
 Every check here is cheap and has caught a real regression at least once.
 
@@ -27,8 +34,18 @@ SRC = pathlib.Path(dog5_paths.SRC)
 #: Parameter files whose whole value is that they can be read from anywhere --
 #: a test, a notebook, a plotting script -- without dragging in numpy, CAN, or
 #: an IMU.  The moment one of them grows an import, that stops being true.
-IMPORT_FREE = ["imu_closedloop_stand/stand_params.py",
-               "torque_primitives/torque_params.py"]
+IMPORT_FREE = ["torque_stand/params.py"]
+
+#: Distributions that are not in this repository and are expected to be
+#: installed.  The first four are required (requirements.txt); the last three
+#: are imported lazily and only on the path that needs them --
+#:   PIL   MuJoCo headless rendering and the README gif
+#:   usb   libusb enumeration, macOS CAN adapters only
+#:   fdilink_imu   the IMU vendor SDK, which is not on PyPI and not vendored
+#:                 here; without it everything imports and every gate passes,
+#:                 and only opening a real IMU fails.
+THIRD_PARTY = {"numpy", "mujoco", "can", "serial",
+               "PIL", "usb", "fdilink_imu"}
 
 
 def test_no_config_shadowing():
@@ -129,8 +146,108 @@ def test_bootstrap_header_is_uniform():
           not bad, "; ".join(bad[:8]) or "uniform")
 
 
+def _tree_modules():
+    """Every module name this tree makes importable, the way dog5_paths does.
+
+    Flat names, because every source directory goes on sys.path, plus dotted
+    `package.module` names for the directories that are deliberately kept off
+    it.
+    """
+    flat, dotted = set(), set()
+    for p in SRC.rglob("*.py"):
+        if "__pycache__" in p.parts:
+            continue
+        rel = p.relative_to(SRC)
+        flat.add(p.stem)
+        if len(rel.parts) == 2:
+            dotted.add(f"{rel.parts[0]}.{p.stem}")
+            dotted.add(rel.parts[0])
+    return flat, dotted
+
+
+def test_every_import_resolves():
+    """No file imports something this repository no longer contains.
+
+    This is the gate that makes the tree portable.  A stale import is invisible
+    until the one branch that reaches it runs -- often on the robot, often
+    mid-stage -- so it is checked statically, over every file, every time.
+
+    Lazy imports inside functions count: `trot_hw.py --web` reaching a module
+    that was deleted is exactly the failure this is here to stop.
+    """
+    flat, dotted = _tree_modules()
+    known = flat | dotted | THIRD_PARTY | set(sys.stdlib_module_names)
+    bad = []
+    for p in sorted(SRC.rglob("*.py")):
+        if "__pycache__" in p.parts:
+            continue
+        tree = ast.parse(p.read_text(encoding="utf-8"))
+        for n in ast.walk(tree):
+            names = []
+            if isinstance(n, ast.Import):
+                names = [a.name for a in n.names]
+            elif isinstance(n, ast.ImportFrom) and n.module and n.level == 0:
+                names = [n.module]
+                if n.module in dotted:      # `from pkg import mod`
+                    names += [f"{n.module}.{a.name}" for a in n.names
+                              if f"{n.module}.{a.name}" in dotted
+                              or a.name in flat]
+            for name in names:
+                root = name.split(".")[0]
+                if name in known or root in known:
+                    continue
+                bad.append(f"{p.relative_to(SRC)}:{n.lineno}: {name}")
+    check("every repo-local import names a module that is present",
+          not bad, "; ".join(bad[:8]) or
+          f"{len(list(SRC.rglob('*.py'))) } files, {len(flat)} modules")
+
+
+def test_no_orphan_modules():
+    """Every .py in the tree is reachable, or is an entry point in its own right.
+
+    The repository ships only code that has run on the robot, and the way that
+    stops being true is by accretion: a helper survives the module that used
+    it.  A file counts as reachable if something imports it OR it does
+    something when run -- a `__main__` guard, or straight-line statements at
+    module level, which is what a runner, a gate and a viewer script all are.
+    """
+    imported, orphans = set(), []
+    for p in SRC.rglob("*.py"):
+        if "__pycache__" in p.parts:
+            continue
+        for n in ast.walk(ast.parse(p.read_text(encoding="utf-8"))):
+            if isinstance(n, ast.Import):
+                imported |= {a.name.split(".")[-1] for a in n.names}
+            elif isinstance(n, ast.ImportFrom) and n.module:
+                imported.add(n.module.split(".")[-1])
+                imported |= {a.name for a in n.names}
+    # Anything at module level that is not a declaration means the file DOES
+    # something when you run it.  Matched structurally rather than by looking
+    # for the text of a `__main__` guard, because the quote style of that
+    # guard is not uniform across this tree and a viewer script has no guard
+    # at all -- it is nine statements and a `launch()`.
+    decl = (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.AsyncFunctionDef,
+            ast.ClassDef, ast.Assign, ast.AnnAssign)
+    for p in sorted(SRC.rglob("*.py")):
+        if "__pycache__" in p.parts or p.stem in ("__init__", "dog5_paths"):
+            continue
+        body = ast.parse(p.read_text(encoding="utf-8")).body
+        runnable = any(
+            not (isinstance(n, decl)
+                 or (isinstance(n, ast.Expr)          # a docstring, not a call
+                     and isinstance(n.value, ast.Constant)))
+            for n in body)
+        if p.stem in imported or runnable:
+            continue
+        orphans.append(str(p.relative_to(SRC)))
+    check("no module is orphaned -- everything is imported or runnable",
+          not orphans, "; ".join(orphans) or "no dead files")
+
+
 def self_test():
     print("repository layout self-test (no hardware)")
+    test_every_import_resolves()
+    test_no_orphan_modules()
     test_no_config_shadowing()
     test_param_files_import_nothing()
     test_layout_is_flat()

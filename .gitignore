@@ -6,8 +6,8 @@ __pycache__/
 venv/
 
 # Run logs. This repository ships NO raw experiment data: the chapter docs
-# quote the measured numbers instead. data/README.md says which logs each
-# offline gate wants and where to get them; the gates skip cleanly without them.
+# quote the measured numbers instead. data/README.md says where the logs the
+# chapters cite live, and how to read one of your own.
 data/**
 !data/README.md
 
@@ -26,11 +26,7 @@ MUJOCO_LOG.TXT
 .idea/
 .claude/
 
-# LaTeX build artifacts (archive/docs_motor_control/)
-*.aux
-*.log
-*.out
-*.toc
-*.synctex.gz
-*.fls
-*.fdb_latexmk
+# The demo video is tracked, through Git LFS -- see .gitattributes.
+# Anything else that lands in trot_video/ is not.
+trot_video/*
+!trot_video/trot.MOV

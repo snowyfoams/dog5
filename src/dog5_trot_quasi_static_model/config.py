@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
-"""Every constant the trot controller reads.  No logic, no imports from siblings.
+"""Every constant the trot reads.  No logic, and no imports from siblings.
+
+    trot_hw.py         reads the gait, swing, walk and safety blocks
+    gait.py            reads GAIT_PERIOD, DUTY, PHASE_OFFSET, CONTACT_RAMP
+    trot_demo.py       reads the DEMO_* block
+    walk_demo.py       reads WALK_*
+
+    Everything else here is geometry: a controlled copy of dog5.xml, kept
+    beside the gains so that a reader checking a number against the robot does
+    not have to open two files.
 
 WHERE THE NUMBERS COME FROM, AND WHICH ONES ARE MEASURED
-    Geometry and mass are a controlled copy of dog5.xml, taken through
-    dog5_description/dog5_kinematics.py -- the same source the standing tracks
-    use.  Nothing here is a round number chosen to look plausible:
+    Geometry and mass come through dog5_description/dog5_kinematics.py -- the
+    same source the standing track uses, so they cannot disagree with it.
+    Nothing here is a round number chosen to look plausible:
 
         MASS          5.8151 kg   sum of the twelve link inertials + trunk
         INERTIA_BODY              whole-robot tensor about the whole-robot CoM
@@ -12,9 +21,20 @@ WHERE THE NUMBERS COME FROM, AND WHICH ONES ARE MEASURED
         HIP_OFFSET                dog5.xml hip body positions
 
     The control gains are the ones this rig has actually stood on.  KP_POS[2]
-    and KD_POS[2] are the 300/40 pair verified on hardware 2026-08-18, and
-    KP_JOINT/KD_JOINT are the 3.0/0.1 that replaced the 15/0.6 which shook at
+    and KD_POS[2] are the 300/40 pair verified on hardware 2026-08-18, and the
+    joint impedance is the 3.0/0.1 that replaced the 15/0.6 which shook at
     9-12 Hz.  See torque_stand/params.py for why those two moved.
+
+    THIS FILE AND torque_stand/params.py MUST AGREE, and `assert_shared()` at
+    the bottom is what enforces it: the trot runs on the week-2 stand's force
+    path, so a gain that exists in both places and differs is a bug, not a
+    tuning choice.  trot_hw.py calls it at import.
+
+    INERTIA_BODY is here as documentation, not as a term in a control law.
+    The model is quasi-static -- no I*alpha, no omega x (I omega) -- so the
+    tensor's only job was to size the attitude gains.  That is worth stating
+    where the tensor is, because it is exactly the assumption a trot that
+    TRAVELS would have to give up.
 
 THE LEG IS NOT A PLANAR TWO-LINK, SO THERE IS NO L1/L2/L3 IN THE USUAL SENSE
     A spec written for a generic quadruped asks for L1 (abduction offset),
@@ -26,8 +46,8 @@ THE LEG IS NOT A PLANAR TWO-LINK, SO THERE IS NO L1/L2/L3 IN THE USUAL SENSE
     and the front/rear x mirroring.
 
     So the true segment VECTORS are exported, and L1/L2/L3 are their norms,
-    provided only for sizing arguments (workspace radius, Raibert step
-    limits).  Anything computing kinematics must use leg_kin, never these.
+    provided only for sizing arguments (workspace radius, step limits).
+    Anything computing kinematics must call dog5_kinematics, never these.
 """
 from __future__ import annotations
 
@@ -39,11 +59,6 @@ import os
 import sys
 
 import numpy as np
-
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_DESC = os.path.normpath(os.path.join(_HERE, "..", "dog5_description"))
-
-_TMC = os.path.normpath(os.path.join(_HERE, "..", "torque_primitives"))
 
 import dog5_kinematics as kin                              # noqa: E402
 import dog5_statics as statics                             # noqa: E402
@@ -268,32 +283,18 @@ CONTACT_RAMP = 0.15                      # fraction of stance at each end;
                                          # see DUTY for the pairing constraint
 
 # ===========================================================================
-# force distribution (balance_qp)
+# force distribution
 # ===========================================================================
+# The shipped runner does NOT solve a QP.  force_totorque.distribute takes the
+# 6-DoF wrench to four foot forces by damped least squares on the grasp map,
+# then CLAMPS: unilateral first (no foot may be asked to pull), the friction
+# cone second, and a rescale so the vertical total still adds up.  Clamping
+# after a solve is not the same thing as constraining a solve, and where the
+# difference shows is a foot near lifting -- which is every handover in a
+# trot.  That is the honest limit of this layer, and it is why the contact
+# ramp above exists: it takes a foot's load down before the schedule lifts it,
+# so the clamp is not the thing handling the transition.
 MU = 0.6                                 # same tangential clamp as the stand
-FZ_MIN = 1.0                             # N, a planted foot never unloads to 0
-FZ_MAX = 1.5 * WEIGHT                    # N, one diagonal pair carries all of
-                                         # it in trot, plus margin for a push
-
-# QP weights: ||A f - w_des||^2_W_TASK + W_FORCE ||f||^2 + W_SMOOTH ||f-f_prev||^2
-#
-# W_TASK IS NOT ALL ONES BECAUSE THE SIX RESIDUALS ARE NOT IN THE SAME UNITS.
-# Forces run to ~57 N and moments to ~5 Nm, so equal weights would let the QP
-# trade 1 Nm of moment error for 1 N of force error -- ten times the attitude
-# error for a tenth of the height error.  The moment weight is the ratio.
-W_TASK = np.array([1.0, 1.0, 1.0, 20.0, 20.0, 20.0])
-W_FORCE = 1.0e-3                         # regularises the 6-of-12 null space
-W_SMOOTH = 1.0e-2                        # penalises f - f_prev; the term that
-                                         # keeps a contact switch from stepping
-
-# ADMM iterations, see balance_qp.  With the dual warm-started across sweeps
-# a trot converges in 6 on average; 60 is the ceiling for the sweep after a
-# contact switch, where the warm start is deliberately discarded.
-QP_ITERS = 60
-QP_RHO = 1.0                             # measured: 6.3 iterations average at
-                                         # 1.0, 30 at 0.1 -- rho is the whole
-                                         # difference between 300 and 760 us
-QP_SIGMA = 1.0e-6
 
 # ===========================================================================
 # control gains
@@ -395,12 +396,6 @@ KD_POS = np.array([0.0, 0, 40.0])      # Ns/m
 KP_SWING = np.diag([140.0, 140.0, 180.0])   # N/m
 KD_SWING = np.diag([8.0, 8.0, 15.0])         # Ns/m
 
-# The 250 Hz joint-space floor under everything, exactly as in torque_stand:
-# a pure force law is velocity-level and a lost foot integrates without bound.
-# 3.0/0.1 and NOT 15/0.6 -- the latter is 68% of the sampled-damper bound at
-# the measured 16 ms loop delay and shook this robot at 9-12 Hz.
-KP_JOINT = 3                         # Nm/rad
-KD_JOINT = 0.1                           # Nms/rad
 
 # ===========================================================================
 # limits and timing
@@ -439,13 +434,12 @@ TORQUE_RAMP_S = 0.3                      # ease-in when torque first arms
 CTRL_DT = 1.0 / 250.0                    # s, one full 12-motor sweep
 
 # THE HEAVY BLOCK CANNOT RUN EVERY SWEEP, AND DOES NOT HAVE TO.
-# Measured on this Pi, one full TrotController.update is 1937 us:
+# Measured on this Pi, one full model block is 1384 us:
 #
 #     four leg chain walks (FK + Jacobian)      533 us
 #     four leg-gravity terms                    474
-#     the force-distribution QP                 294
 #     swing plan + reference                     85
-#     wrench, frames, per-leg torque, clamp     ~550
+#     wrench, grasp map, per-leg torque, clamp  ~290
 #
 # That is 48% of a 4 ms sweep, and the sweep also has twelve CAN transactions
 # in it.  torque_stand hit the same wall and answered it the same way: run the
@@ -587,8 +581,8 @@ WALK_STEP_M = 0.020               # m per swing; +x (nose) first, then -x.
 #             MAX_FORWARD_V_AT_STAND_HEIGHT)
 #
 # Do NOT touch STAND_HEIGHT for this: it is the GEOMETRY ANCHOR Q_STAND,
-# FOOT_STANCE_BODY, COM_ABOVE_FLOOR and the leg_kin/swing/balance_qp
-# self-tests are solved at, not the run height.  trot_hw's self-test pins the
+# FOOT_STANCE_BODY and COM_ABOVE_FLOOR are solved at, not the run height.
+# trot_hw's self-test pins the
 # 0.152 <-> 0.190 correspondence to STAND_HEIGHT itself, so this knob is free
 # to move without failing anything.
 IMU_BELOW_TRUNK_ORIGIN_M = 0.038
@@ -629,20 +623,21 @@ TAU_STAGED_MAX = 3.0                     # the staged ceiling (= TAU_MAX)
 TAU_HARD_NM = 9.0                        # driver iq saturation
 J_MIN = 0.0088                           # kg m^2, smallest joint inertia
 
-# -- THREE THINGS ARE CALLED kd_joint AND THEY ARE NOT THE SAME NUMBER ------
-# Untangled here once, because the split forced the question:
+# -- TWO THINGS ARE CALLED kd_joint AND THEY ARE NOT THE SAME NUMBER --------
+# Untangled here once, because it is the single most confusable pair of gains
+# in the stack and they act on different sets of legs:
 #
 #   KD_JOINT_STANCE  0.15  inside force_totorque's stance law, -kd*qd on a
 #                          PLANTED leg only.  params.py calls it KD_JOINT.
 #                          Every t*.npz flew 0.15.
 #   KP_IMP / KD_IMP  3.0 / 0.1   the 250 Hz joint-space floor under EVERY leg,
 #                          planted or not.  params.py calls it KP_IMP/KD_IMP.
-#   KP_JOINT/KD_JOINT 10.0 / 0.1  this file's pair, read only by
-#                          dog5_trot_quasi_static_model/controller.py, which trot_hw does not
-#                          fly.  Its own comment says "3.0/0.1" while the code
-#                          says 10.0 -- left alone rather than silently
-#                          retuned, because controller.py is what it belongs
-#                          to and nothing here reads it.
+#                          A pure force law is velocity-level, so a leg that
+#                          loses its foot integrates without bound; this is
+#                          what stops that.  3.0/0.1 and NOT 15/0.6 -- the
+#                          latter is 68% of the sampled-damper bound at the
+#                          measured 16 ms loop delay, and shook this robot at
+#                          9-12 Hz on 2026-08-17.
 KD_JOINT_STANCE = 0.15                   # Nms/rad, stance law's own damper
 KP_IMP = 3.0                             # Nm/rad
 KD_IMP = 0.1                             # Nms/rad
@@ -818,7 +813,7 @@ VERIFIED_GAINS = {
 # HOW FAST THIS ROBOT CAN TROT AT THIS HEIGHT, AND IT IS NOT FAST.
 # The nominal stance already uses 92.3% of the leg's reach -- hip to foot is
 # 0.2144 m against a 0.2324 m chain -- so a Raibert step has 6.4 mm of room
-# before swing.py's 95% clamp truncates it.  Measured against the step length
+# before the 95% reach clamp truncates it.  Measured against the step length
 # v*(T_stance/2) + RAIBERT_KV*v:
 #
 #     stand height   hip->foot   % of reach   step room   max forward v
@@ -835,7 +830,6 @@ VERIFIED_GAINS = {
 # DERIVED, not written down.  It was a literal and it went stale the moment
 # DUTY moved from 0.50 to 0.60: the step length is v*(T_stance/2) + kv*v, and
 # T_stance is DUTY*GAIT_PERIOD, so a duty change silently invalidates it.
-# swing.py's self-test recomputes this from the geometry and compares.
 _REACH_ROOM = 0.95 * LEG_REACH - float(np.linalg.norm(
     FOOT_STANCE_BODY[0] - HIP_OFFSET[0]))
 MAX_FORWARD_V_AT_STAND_HEIGHT = _REACH_ROOM / (

@@ -128,14 +128,14 @@ THE TWO NUMBERS THAT WERE DEAD RECKONING UNTIL 2026-08-17
 RUN -- supported robot, hand on SPACE
     cd <repo>/src
 
-    python3 dog5_trot_quasi_static_model/trot_hw.py --self-test      # offline, no hardware
-    python3 dog5_trot_quasi_static_model/gait.py    --self-test      # the contact clock on its own
-    python3 dog5_trot_quasi_static_model/swing.py   --self-test      # the swing arc on its own
+    python3 dog5_trot_quasi_static_model/trot_hw.py --self-test   # offline, no hardware
+    python3 dog5_trot_quasi_static_model/gait.py    --self-test   # the contact clock alone
+    python3 selftest/test_all.py                                  # every gate in the repo
+
     THIS FILE'S OWN --self-test IS THE WEEK-2 STAND SET, PLUS THE THREE
-    THINGS THIS FILE OWNS RATHER THAN dog5_trot_quasi_static_model/: the sweep-rate torque map
-    (held to force_totorque's own answer, exactly), the swing arc's horizontal
-    half, and the Raibert step that plans it.  The gait clock and the
-    world-frame swing are still tested a module at a time, by the two above.
+    THINGS THIS FILE OWNS: the sweep-rate torque map (held to
+    force_totorque's own answer, exactly), the swing arc, and the step that
+    plans it.  The gait clock is tested on its own, by the second line.
 
     PARAMETERS ARE EDITS, NOT FLAGS (workflow changed 2026-08-21).  Open
     dog5_trot_quasi_static_model/config.py, change the constant, save, and every hardware run
@@ -465,8 +465,8 @@ def raibert_step_body(i, v_world, C, t_stance, kv, z_des, foot_xy,
     does not start rotating with the heading.  Placement still cannot correct
     a yaw drift, only an x/y one; the yaw spring is what answers that now.
 
-    THE CLAMP HOLDS z AND SHORTENS THE STEP, which swing.py's does not: that
-    one scales the whole hip-to-foot vector, and so lifts the landing point off
+    THE CLAMP HOLDS z AND SHORTENS THE STEP, which the obvious reach clamp
+    does not: scaling the whole hip-to-foot vector lifts the landing point off
     the floor by the same fraction it pulls it in.  On a flat floor the height
     is not negotiable and the length is, so the reachable set is intersected at
     the LANDING PLANE -- a horizontal disc of radius sqrt((0.95 R)^2 - dz^2)
@@ -2241,9 +2241,10 @@ def self_test():
     check("the default step reproduces the t1..t8 vertical arc exactly", same,
           "x/y bit-identical to foot_xy and horizontal v exactly 0")
 
-    # v_des has to BE dp_des/ds or the impedance damps against a lie -- the
-    # same check swing.py makes of its own reference, made here because this
-    # is a DIFFERENT reference and inherits none of that proof.
+    # v_des has to BE dp_des/ds or the impedance damps against a lie.  Checked
+    # numerically rather than argued, because the reference is a product of two
+    # smoothsteps and a hand-differentiated one is exactly the sort of thing
+    # that stays plausible while being wrong.
     step = np.array([0.004, -0.003])
     ss = np.linspace(0.001, 0.999, 401)
     P_ = np.array([swing_foot_body(0, s, zh, fxy, 0.02, step)[0] for s in ss])

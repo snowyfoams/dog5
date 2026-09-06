@@ -14,3 +14,15 @@ numpy>=1.24
 mujoco>=3.0
 python-can>=4.0
 pyserial>=3.5
+
+# ---------------------------------------------------------------------------
+# Optional, imported lazily and only on the path that needs them. Nothing in
+# the control loop or the gate suite touches either.
+#
+#   Pillow   MuJoCo headless rendering (stand_dog5.py --headless) and the
+#            README gif (dog5_description/make_gif.py)
+#   pyusb    libusb enumeration for macOS CAN adapters (motor/mac_can.py).
+#            Not needed on the robot host, which is SocketCAN.
+# ---------------------------------------------------------------------------
+# Pillow>=10.0
+# pyusb>=1.2
