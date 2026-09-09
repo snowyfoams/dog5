@@ -124,7 +124,7 @@ blue = ẑ.*
 | `z` | leg FK through the planted feet |
 | `x`, `y` | **nobody.** Leg odometry measures velocity and has no origin |
 | roll, pitch | the AHRS — and they are a *gravity* estimate, valid while the specific force is gravity |
-| yaw | the AHRS too: magnetometer, next to twelve motors and a steel frame. Exposed, logged, and not trusted by default |
+| yaw | the AHRS too- use magnetometer|
 | `q` (12) | the encoders |
 | `q̇` | encoder differencing |
 | `ω` | the gyro, body frame, all three axes |
